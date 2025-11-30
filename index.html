@@ -6,7 +6,7 @@
     <title>FlashFinance Real-Time News (Netlify Secure)</title>
     <!-- Load Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Set up configuration for Tailwind-->
+    <!-- Set up configuration for Tailwind -->
     <script>
         tailwind.config = {
             theme: {
@@ -35,109 +35,132 @@
         .flash-card {
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
-        .spinner {
-            border-top-color: #4f46e5;
-            animation: spin 1s ease-in-out infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .tag-Earnings { background-color: #d1fae5; color: #059669; }
-        .tag-Macro { background-color: #bfdbfe; color: #1d4ed8; }
-        .tag-Tech { background-color: #fce7f3; color: #db2777; }
-        .tag-Policy { background-color: #fef3c7; color: #d97706; }
-        .tag-M\&A { background-color: #e0f2f1; color: #0d9488; }
-        .tag-Market { background-color: #fee2e2; color: #dc2626; }
-        .tag-Default { background-color: #e5e7eb; color: #4b5563; }
-        .date-header {
-            position: relative;
-            text-align: center;
-            margin: 2rem 0 1rem 0;
-            color: #6b7280;
-            font-weight: 600;
-        }
-        .date-header::before, .date-header::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            width: 40%;
-            height: 1px;
-            background: #e5e7eb;
-        }
-        .date-header::before { left: 0; }
-        .date-header::after { right: 0; }
-        .date-text {
-            background-color: #f8fafc;
-            padding: 0 1rem;
-            position: relative;
-            z-index: 10;
+        .article-content {
+            white-space: pre-wrap;
+            line-height: 1.6;
+            margin-top: 1rem;
         }
     </style>
 </head>
 <body class="p-4 sm:p-8">
-    <div class="max-w-xl mx-auto">
-        <header class="text-center mb-8">
-            <h1 class="text-4xl font-extrabold tracking-tight text-flash-purple">
-                Flash<span class="text-flash-blue">Finance</span> (SECURE)
+
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-extrabold text-gray-900">
+                <span class="text-flash-purple">Flash</span>Finance
             </h1>
-            <p class="text-gray-500 mt-2 text-base">
-                The essential facts in 60 words or less, powered by a secure Netlify Function.
+            <p class="text-gray-500 mt-2">
+                Real-time, secure financial news powered by Google Gemini and Netlify Functions.
             </p>
         </header>
 
-        <div id="news-container" class="space-y-6">
-            <p id="initial-message" class="text-center text-gray-500 italic p-4">
-                Fetching secure financial stories...
-            </p>
+        <!-- Main News Feed -->
+        <div id="news-feed" class="space-y-6">
+            <!-- News Cards will be injected here -->
         </div>
 
-        <div id="bottom-loader" class="text-center p-8 hidden">
-            <div class="spinner border-4 border-gray-200 border-t-4 w-8 h-8 mx-auto"></div>
-            <p class="mt-4 text-gray-500">Loading more stories...</p>
+        <!-- Dynamic Message Box (for errors/info) -->
+        <div id="message-box" class="mt-6 hidden"></div>
+
+        <!-- Global Loader for News Fetching -->
+        <div id="news-loader" class="text-center py-8 hidden">
+            <svg class="animate-spin h-8 w-8 text-flash-purple mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-gray-500 mt-2">Fetching the latest finance headlines...</p>
         </div>
-        
+
+        <!-- Footer -->
+        <footer class="mt-12 text-center text-gray-400 text-sm">
+            <p>Content generation powered by Gemini AI.</p>
+        </footer>
     </div>
 
-    <!-- Application Logic (Now calling Netlify Proxy) -->
-    <script type="module">
-        // --- Netlify Function Endpoints ---
-        // We call the file name within the netlify/ folder (get-news.js)
-        const NEWS_PROXY_ENDPOINT = '/.netlify/functions/get-news'; 
-        const SUMMARY_PROXY_ENDPOINT = '/.netlify/functions/get-news'; // Reusing the same function
-        
-        // UI Elements
-        const newsContainer = document.getElementById('news-container');
-        const initialMessage = document.getElementById('initial-message');
-        const bottomLoader = document.getElementById('bottom-loader');
+    <script>
+        // FIX 1: Removed leading slash to prevent URL parsing errors in some execution environments.
+        const NEWS_PROXY_ENDPOINT = '.netlify/functions/get-news';
+        const MAX_ARTICLES = 15;
 
-        let liveNewsData = []; 
-        let isFetching = false; 
+        let liveNewsData = []; // Stores all fetched articles
+        let isFetching = false;
+        let articlesRendered = 0;
 
-        // --- Date Utilities for Chronological Feed ---
-        function getTodayDateString() {
-            const d = new Date();
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        }
-        
-        function getPreviousDay(dateString) {
-            const date = new Date(dateString + 'T00:00:00'); 
-            date.setDate(date.getDate() - 1);
-            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-        }
-
-        let currentQueryDate = getTodayDateString(); 
-
-        // --- Core Application Start ---
-        fetchNews();
-        
         /**
-         * Generic function to call the Netlify Proxy. The proxy handles the secret key.
-         * The client-side (browser) code never sees the API key.
+         * Renders a single news card element.
          */
-        async function callProxyApi(endpoint, payload, isJson = false) {
-            const maxRetries = 3;
+        function renderNewsCard(article) {
+            const card = document.createElement('div');
+            card.className = 'flash-card bg-white p-5 rounded-xl border border-gray-100';
+            card.innerHTML = `
+                <h2 class="text-xl font-bold text-gray-900 mb-2">${article.title}</h2>
+                <div class="flex justify-between items-center text-xs text-gray-500 mb-4 border-b pb-2">
+                    <span>Source: ${article.source}</span>
+                    <span>Article ID: ${article.id}</span>
+                </div>
+                
+                <div id="content-${article.id}" class="article-content text-gray-700">
+                    <!-- Placeholder/Initial Content -->
+                    <p>${article.originalText.substring(0, 150)}...</p>
+                </div>
+
+                <div class="flex justify-between items-center mt-4">
+                    <button 
+                        id="btn-toggle-${article.id}" 
+                        class="summarize-btn px-4 py-2 bg-flash-purple text-white text-sm font-semibold rounded-lg hover:bg-opacity-90 transition duration-150 flex items-center" 
+                        data-id="${article.id}"
+                        data-state="original"
+                    >
+                        <svg id="loader-${article.id}" class="animate-spin h-4 w-4 mr-2 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        <span id="text-toggle-${article.id}">Generate Flash Summary</span>
+                    </button>
+                    <a href="${article.link}" target="_blank" rel="noopener noreferrer" class="text-flash-blue hover:underline text-sm font-medium">Read Full Article</a>
+                </div>
+            `;
+            document.getElementById('news-feed').appendChild(card);
             
-            for (let attempt = 0; attempt < maxRetries; attempt++) {
+            // Attach event listener for the summary button
+            card.querySelector(`#btn-toggle-${article.id}`).addEventListener('click', () => toggleSummary(article.id));
+        }
+
+        /**
+         * Displays a temporary message (error or info)
+         */
+        function displayMessage(message, type = 'info') {
+            const box = document.getElementById('message-box');
+            
+            // FIX 2: Correctly remove all conflicting classes and add classes individually
+            box.classList.remove('hidden', 'bg-red-100', 'border-red-400', 'text-red-700', 'bg-blue-100', 'border-blue-400', 'text-blue-700', 'border', 'px-4', 'py-3', 'rounded-xl', 'mb-6', 'shadow-md'); 
+
+            // Add type-specific classes
+            if (type === 'error') {
+                box.classList.add('bg-red-100', 'border-red-400', 'text-red-700');
+            } else {
+                box.classList.add('bg-blue-100', 'border-blue-400', 'text-blue-700');
+            }
+
+            // Add common classes
+            box.classList.add('border', 'px-4', 'py-3', 'rounded-xl', 'mb-6', 'shadow-md');
+            box.classList.remove('hidden');
+
+            box.innerHTML = `<p>${message}</p>`;
+            
+            // Hide after 5 seconds
+            setTimeout(() => {
+                box.classList.add('hidden');
+            }, 5000);
+        }
+
+        /**
+         * Helper function to call the Netlify proxy securely with exponential backoff.
+         * The function is generic and accepts a payload and endpoint.
+         */
+        async function callProxyApi(endpoint, payload, isJson = true, maxAttempts = 5) {
+            let attempts = 0;
+            while (attempts < maxAttempts) {
                 try {
                     const response = await fetch(endpoint, {
                         method: 'POST',
@@ -145,289 +168,208 @@
                         body: JSON.stringify(payload)
                     });
 
+                    if (response.status === 429) {
+                        const delay = Math.pow(2, attempts) * 1000 + Math.random() * 1000;
+                        attempts++;
+                        if (attempts >= maxAttempts) throw new Error("API Rate Limit Exceeded");
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue; // Retry
+                    }
+
+                    if (!response.ok) {
+                        const errorBody = await response.json().catch(() => response.text());
+                        throw new Error(`Proxy Error: ${response.status} - ${JSON.stringify(errorBody)}`);
+                    }
+
                     const result = await response.json();
-
-                    if (response.status !== 200) {
-                        console.error(`Proxy Error (Status ${response.status}):`, result.error || "Unknown server error.");
-                        throw new Error(`Proxy call failed with status ${response.status}`);
-                    }
                     
-                    // The Netlify function passes the raw Gemini response
-                    const geminiResult = result.candidates?.[0];
-                    if (!geminiResult) return { error: true, rawText: "API response candidates missing." };
-                    
-                    const text = geminiResult.content?.parts?.[0]?.text || '';
-                    
-                    if (isJson) {
-                        let cleanedText = text;
-                        try {
-                            cleanedText = cleanedText.replace(/^```json\s*|```\s*$/g, '').trim();
-                            
-                            const firstBracket = cleanedText.indexOf('[');
-                            const lastBracket = cleanedText.lastIndexOf(']');
-
-                            if (firstBracket !== -1 && lastBracket > firstBracket) {
-                                cleanedText = cleanedText.substring(firstBracket, lastBracket + 1);
-                                return JSON.parse(cleanedText);
-                            } else {
-                                console.error("JSON Structure not found: Missing array brackets [].");
-                                return { error: true, rawText: cleanedText };
-                            }
-
-                        } catch (e) {
-                            console.error("JSON Parsing failed in try/catch block:", e.message);
-                            return { error: true, rawText: cleanedText };
+                    // Client-side processing of the raw Gemini response
+                    const candidate = result.candidates?.[0];
+                    if (candidate && candidate.content?.parts?.[0]?.text) {
+                        const text = candidate.content.parts[0].text;
+                        
+                        let sources = [];
+                        const groundingMetadata = candidate.groundingMetadata;
+                        if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                            sources = groundingMetadata.groundingAttributions
+                                .map(attribution => ({
+                                    uri: attribution.web?.uri,
+                                    title: attribution.web?.title,
+                                }))
+                                .filter(source => source.uri && source.title);
                         }
+                        
+                        return { text, sources };
+                    } else {
+                        throw new Error("API response content was empty or malformed.");
                     }
-                    
-                    return { text };
 
                 } catch (error) {
-                    console.error(`Attempt ${attempt + 1} failed:`, error.message);
-                    if (attempt < maxRetries - 1) {
-                        const waitTime = Math.pow(2, attempt) * 1000;
-                        await new Promise(resolve => setTimeout(resolve, waitTime));
+                    if (attempts < maxAttempts - 1) {
+                        attempts++;
+                        const delay = Math.pow(2, attempts) * 1000 + Math.random() * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                        throw error;
                     }
                 }
             }
-            return null; // Irrecoverable failure after all retries
         }
 
         /**
-         * Fetches the top finance news stories for the currentQueryDate.
+         * Fetches news using the Netlify function proxy.
          */
         async function fetchNews() {
-            if (isFetching) return;
-
+            // Check if we already fetched enough articles or are currently fetching
+            if (isFetching || liveNewsData.length >= MAX_ARTICLES) return; 
             isFetching = true;
-            
-            const isInitialLoad = liveNewsData.length === 0;
 
-            initialMessage.classList.add('hidden');
-            bottomLoader.classList.remove('hidden');
+            const loader = document.getElementById('news-loader');
+            if (loader) loader.classList.remove('hidden');
 
-            if (isInitialLoad) {
-                newsContainer.innerHTML = `<div class="text-center p-8">
-                    <div class="spinner border-4 border-gray-200 border-t-4 w-8 h-8 mx-auto"></div>
-                    <p class="mt-4 text-flash-purple">Sourcing top stories for today via secure function...</p>
-                </div>`;
-                liveNewsData = []; 
-            }
-            
-            const queryDate = currentQueryDate;
-            
-            const displayDate = new Date(queryDate).toLocaleDateString('en-US', {
-                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-            });
-            
-            const todayStr = getTodayDateString();
-            const yesterdayStr = getPreviousDay(todayStr);
-
-            let headerText = displayDate;
-            if (queryDate === todayStr) {
-                headerText = "News from Today";
-            } else if (queryDate === yesterdayStr) {
-                headerText = "News from Yesterday";
-            }
-
-            // API Payload for Real-Time News (Text-based JSON Request)
-            const userPrompt = `Find 5 new and distinct important financial news stories that were published on the date ${queryDate}. Return the response STRICTLY as a JSON array of objects, following this structure: [{"title": "...", "category": "...", "source": "...", "snippet": "...", "full_story_content": "...", "url": "...", "date": "..."}]. For the category, use a single word (e.g., Earnings, Macro, Tech, Policy). The 'url' field MUST be the direct source link. The 'date' MUST be the publication date as a concise string (e.g., "Nov 25, 2024").`;
-
+            // CRITICAL FIX: Ensure 'type: "fetch"' is included in the payload
             const payload = {
-                contents: [{ parts: [{ text: userPrompt }] }],
-                tools: [{ "google_search": {} }],
-                systemInstruction: {
-                    parts: [{ text: "Act as a financial news researcher. Find 5 distinct stories and return the result as a STRICT, unadorned JSON array. DO NOT include any leading/trailing text, greetings, markdown fences (like ```json), or explanations outside the JSON array. Ensure every object includes a 'date' field with the article's publication time." }]
-                },
+                type: 'fetch', // Tells get-news.js to run the news fetching logic
+                // No additional parameters needed for the first page
             };
 
-            const result = await callProxyApi(NEWS_PROXY_ENDPOINT, payload, true);
+            try {
+                // The proxy returns { text: markdown_string, sources: [] }
+                const result = await callProxyApi(NEWS_PROXY_ENDPOINT, payload, true); 
 
-            isFetching = false;
-            bottomLoader.classList.add('hidden');
+                if (result && result.text) {
+                    // Use a simple markdown parser to extract articles
+                    const articles = parseMarkdownArticles(result.text, result.sources);
 
-            if (!result) {
-                 newsContainer.innerHTML = `<div class="bg-red-100 p-4 rounded-xl border-2 border-red-400">
-                    <p class="text-red-700 text-center font-bold">Proxy Function Failed</p>
-                    <p class="text-red-600 text-sm mt-2">The serverless function did not return a valid response. Please check Netlify function logs for errors.</p>
-                </div>`;
-                return;
-            }
-
-            if (Array.isArray(result) && result.length > 0) {
-                if (isInitialLoad) {
-                    newsContainer.innerHTML = ''; 
-                }
-                
-                const newStories = result.filter(story => story && story.url && story.title);
-
-                if (newStories.length > 0) {
-                    addDateHeader(headerText);
-
-                    const indexOffset = liveNewsData.length;
-                    liveNewsData.push(...newStories);
-                    renderNewsCards(newStories, indexOffset);
+                    // Append new articles to the global store
+                    liveNewsData.push(...articles);
+                    
+                    // Render only the new articles
+                    renderNewArticles();
                 } else {
-                    if (isInitialLoad) {
-                         newsContainer.innerHTML = `<p class="text-gray-500 text-center p-8">No significant financial news found for today. Scrolling will try yesterday's news.</p>`;
-                    } else {
-                         addDateHeader(headerText + " - No significant news found");
-                    }
+                    displayMessage('Proxy returned an empty or invalid result.', 'error');
                 }
                 
-                currentQueryDate = getPreviousDay(queryDate);
-               
-            } else if (result && result.error) {
-                if (isInitialLoad) {
-                     newsContainer.innerHTML = `<div class="bg-red-100 p-4 rounded-xl border-2 border-red-400">
-                        <p class="text-red-700 text-center font-bold mb-3">Data Load Failed: Invalid JSON Format</p>
-                        <p class="text-red-600 text-sm mb-2">**Raw Output Received (Diagnostic)**:</p>
-                        <pre class="bg-red-50 p-3 text-xs overflow-auto text-left whitespace-pre-wrap rounded-lg max-h-64">${result.rawText || 'No parseable text was received.'}</pre>
-                    </div>`;
-                }
+            } catch (error) {
+                console.error('Failed to fetch news:', error);
+                displayMessage(`Failed to load news: ${error.message || 'Unknown error'}`, 'error');
+            } finally {
+                isFetching = false;
+                if (loader) loader.classList.add('hidden');
             }
         }
-        
+
         /**
-         * Adds a date separator header to the news feed.
+         * Renders articles that haven't been rendered yet.
          */
-        function addDateHeader(text) {
-             const header = document.createElement('div');
-             header.className = 'date-header';
-             header.innerHTML = `<span class="date-text">${text}</span>`;
-             newsContainer.appendChild(header);
+        function renderNewArticles() {
+            const articlesToRender = liveNewsData.slice(articlesRendered);
+            articlesToRender.forEach(renderNewsCard);
+            articlesRendered = liveNewsData.length;
         }
 
         /**
-         * Renders the news cards based on the structured data.
+         * Parses the markdown string from the Gemini response into structured article objects.
          */
-        function renderNewsCards(data, indexOffset) {
-            
-            data.forEach((story, localIndex) => {
-                const globalIndex = indexOffset + localIndex;
-                const cleanCategory = story.category ? story.category.replace(/[^a-zA-Z0-9]/g, '').trim() : 'Default';
-                const categoryClass = `tag-${cleanCategory}`;
-                
-                // --- ROBUST URL VALIDATION AND CLEANING ---
-                let rawUrl = story.url ? story.url.trim() : null;
-                let hasValidUrl = false;
-                let cleanUrl = '#'; 
+        function parseMarkdownArticles(markdownText, sources) {
+            const articles = [];
+            // Regex to find H2 titles (##) and the following paragraph text
+            const articleRegex = /##\s*(.*?)\s*\n\s*((?:(?!\n##|\n\n-|\n\n\[).)*)/gs;
+            let match;
+            let currentId = liveNewsData.length + 1;
 
-                if (rawUrl && rawUrl.length > 5) { 
-                    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
-                        cleanUrl = rawUrl;
-                    } else {
-                        cleanUrl = 'https://' + rawUrl;
-                    }
-                    
-                    if (cleanUrl.includes('.')) {
-                        hasValidUrl = true;
-                    } else {
-                        cleanUrl = '#';
-                    }
+            while ((match = articleRegex.exec(markdownText)) !== null) {
+                const title = match[1].trim();
+                let fullText = match[2].trim();
+
+                // Clean up any remaining leading/trailing whitespace or empty lines
+                fullText = fullText.replace(/[\r\n]{2,}/g, '\n\n').trim();
+
+                if (title && fullText) {
+                    // Use the first source URI as the mock link for simplicity
+                    const link = sources.length > 0 ? sources[0].uri : '#';
+
+                    articles.push({
+                        id: currentId++,
+                        title: title,
+                        originalText: fullText,
+                        source: sources.length > 0 ? sources[0].title : 'Gemini Search',
+                        link: link,
+                        summary: null, // Will be populated by the summary click
+                    });
                 }
-                
-                const card = document.createElement('div');
-                card.id = `card-${globalIndex}`;
-                card.className = 'flash-card bg-white rounded-xl p-5 md:p-6 transition duration-300 hover:shadow-2xl';
-                
-                const sourceDisplay = hasValidUrl 
-                    ? `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-sm font-semibold text-flash-blue hover:text-flash-purple transition duration-150">
-                          ${story.source || 'Source Link'}
-                       </a>`
-                    : `<span class="text-sm font-semibold text-gray-500" title="External link not provided by the API source">${story.source || 'N/A'}</span>`;
-                
-                const dateDisplay = `<p class="text-xs text-gray-400 mt-1 mb-3">${story.date || 'Date N/A'}</p>`;
-
-
-                card.innerHTML = `
-                    <!-- Top Row: Category and Source -->
-                    <div class="flex justify-between items-center mb-3">
-                        <div class="flex items-center">
-                            <span class="w-2 h-2 rounded-full bg-flash-green mr-2"></span>
-                            <span class="text-xs font-bold px-2 py-1 rounded-full ${categoryClass}">${story.category || 'N/A'}</span>
-                        </div>
-                        <!-- Source link -->
-                        ${sourceDisplay}
-                    </div>
-
-                    <!-- Title -->
-                    <h2 class="text-xl font-extrabold text-gray-900 mb-0 leading-tight">${story.title || 'No Title Available'}</h2>
-
-                    <!-- Date -->
-                    ${dateDisplay}
-
-                    <!-- Snippet -->
-                    <p class="text-gray-600 mb-4">${story.snippet ? story.snippet + '...' : 'Details not available.'}</p>
-
-                    <!-- Summary Action -->
-                    <div class="flex flex-col sm:flex-row gap-3">
-                        <button data-index="${globalIndex}" class="summarize-btn w-full flex items-center justify-center bg-flash-purple hover:bg-flash-blue text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm disabled:bg-gray-400">
-                            <span class="summary-text">Generate 60-Word Summary</span>
-                            <div class="spinner summary-loader w-4 h-4 border-2 border-transparent rounded-full ml-2 hidden"></div>
-                        </button>
-                    </div>
-                    
-                    <!-- Content Area for Summary Toggle -->
-                    <div class="story-content mt-4 p-3 bg-bg-gray rounded-lg text-sm text-gray-700 hidden">
-                        <!-- Summary goes here -->
-                    </div>
-                `;
-                newsContainer.appendChild(card);
-            });
-
-            document.querySelectorAll('.summarize-btn').forEach(btn => {
-                btn.removeEventListener('click', handleSummarization); 
-                btn.addEventListener('click', handleSummarization);
-            });
+            }
+            return articles;
         }
-        
+
         /**
-         * Handles the "Generate Summary" action.
+         * Generates and displays the summary when the button is clicked.
          */
-        async function handleSummarization(event) {
-            const btn = event.currentTarget;
-            const index = parseInt(btn.dataset.index);
-            const story = liveNewsData[index];
-            const card = document.getElementById(`card-${index}`);
-            const contentArea = card.querySelector('.story-content');
-            const summaryTextSpan = btn.querySelector('.summary-text');
-            const summaryLoader = btn.querySelector('.summary-loader');
-            
-            if (!contentArea.classList.contains('hidden') && contentArea.dataset.mode === 'summary') {
-                contentArea.classList.add('hidden');
-                summaryTextSpan.textContent = 'Generate 60-Word Summary';
+        async function toggleSummary(articleId) {
+            const article = liveNewsData.find(a => a.id === articleId);
+            const contentArea = document.getElementById(`content-${articleId}`);
+            const button = document.getElementById(`btn-toggle-${articleId}`);
+            const textSpan = document.getElementById(`text-toggle-${articleId}`);
+            const loader = document.getElementById(`loader-${articleId}`);
+
+            if (!article || !contentArea || !button) return;
+
+            const currentState = button.getAttribute('data-state');
+
+            if (currentState === 'summary' && article.summary) {
+                // Action: Hide Summary, show Original Text
+                contentArea.innerHTML = `<p>${article.originalText.substring(0, 150)}...</p>`;
+                textSpan.textContent = 'Generate Flash Summary';
+                button.setAttribute('data-state', 'original');
+                button.classList.remove('bg-flash-red');
+                button.classList.add('bg-flash-purple');
                 return;
             }
 
-            document.querySelectorAll('.summarize-btn').forEach(b => b.disabled = true);
-            summaryLoader.classList.remove('hidden');
-            summaryTextSpan.textContent = 'Generating...';
-            contentArea.classList.remove('hidden');
-            contentArea.innerHTML = `<p class="text-center">Generating summary...</p>`;
-            contentArea.dataset.mode = 'summary';
+            if (article.summary) {
+                // Action: Show Summary (already generated)
+                contentArea.innerHTML = `<div class="font-bold mb-1 text-flash-purple">Flash Summary (60 Words Max):</div><p class="font-medium">${article.summary}</p>`;
+                textSpan.textContent = 'Hide Summary';
+                button.setAttribute('data-state', 'summary');
+                button.classList.remove('bg-flash-purple');
+                button.classList.add('bg-flash-red');
+                return;
+            }
+            
+            // --- Action: Generate Summary (First Time) ---
+            button.disabled = true;
+            loader.classList.remove('hidden');
+            textSpan.textContent = 'Generating...';
 
-            const payload = {
-                contents: [{ parts: [{ text: `Summarize this financial news story in a single, cohesive paragraph, strictly limiting the output to 60 words or less: ${story.full_story_content}` }] }],
-                systemInstruction: {
-                    parts: [{ text: "You are a concise financial editor. Summarize the content into a single paragraph, 60 words maximum. Do not use a title, bullets, or any citation placeholders." }]
-                },
+            const summaryPayload = {
+                type: 'summarize', // Tells get-news.js to run the summary logic
+                textToSummarize: article.originalText,
             };
 
-            const result = await callProxyApi(SUMMARY_PROXY_ENDPOINT, payload, false);
+            try {
+                // Call the proxy for summarization
+                const result = await callProxyApi(NEWS_PROXY_ENDPOINT, summaryPayload, false); // False because we want a concise text response
 
-            document.querySelectorAll('.summarize-btn').forEach(b => b.disabled = false);
-            summaryLoader.classList.add('hidden');
-            
-            if (result && result.text) {
-                summaryTextSpan.textContent = 'Hide Summary';
-                contentArea.innerHTML = `
-                    <div class="font-bold mb-1 text-flash-purple">Flash Summary:</div>
-                    ${result.text}
-                `;
-            } else {
-                summaryTextSpan.textContent = 'Retry Summary';
-                contentArea.innerHTML = `<p class="text-red-500">Failed to generate summary. (Check Console for Proxy Status)</p>`;
+                if (result && result.text) {
+                    // Update the article data and UI
+                    article.summary = result.text.trim(); // Save the summary
+                    contentArea.innerHTML = `<div class="font-bold mb-1 text-flash-purple">Flash Summary (60 Words Max):</div><p class="font-medium">${article.summary}</p>`;
+                    textSpan.textContent = 'Hide Summary';
+                    button.setAttribute('data-state', 'summary');
+                    button.classList.remove('bg-flash-purple');
+                    button.classList.add('bg-flash-red');
+
+                } else {
+                    displayMessage('Failed to generate summary. The AI response was empty.', 'error');
+                    textSpan.textContent = 'Retry Summary';
+                }
+            } catch (e) {
+                console.error("Summarization failed:", e);
+                displayMessage(`Summarization failed: ${e.message}`, 'error');
+                textSpan.textContent = 'Retry Summary';
+            } finally {
+                button.disabled = false;
+                loader.classList.add('hidden');
             }
         }
 
@@ -438,13 +380,18 @@
             const scrollPosition = window.innerHeight + window.scrollY;
             const documentHeight = document.body.offsetHeight;
             
-            if (scrollPosition >= documentHeight - 200 && !isFetching && liveNewsData.length > 0) {
+            // Trigger fetch when user is near the bottom
+            if (scrollPosition >= documentHeight - 500 && !isFetching && liveNewsData.length < MAX_ARTICLES) {
                 fetchNews();
             }
         }
 
-        // --- Event Listeners ---
+        // --- Initialization and Event Listeners ---
         window.addEventListener('scroll', handleScroll);
+        
+        window.onload = function() {
+            fetchNews(); // Initial load
+        }
 
     </script>
 </body>
