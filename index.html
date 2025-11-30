@@ -49,7 +49,6 @@
             <h1 class="text-4xl font-extrabold text-gray-900">
                 <span class="text-flash-purple">Flash</span>Finance
             </h1>
-            <!-- Removed the sub-title as requested -->
         </header>
 
         <!-- Main News Feed -->
@@ -248,15 +247,17 @@
         function parseMarkdownArticles(markdownText) {
             const articles = [];
             
-            // Updated Regex: Matches H2 titles (##) and the following text. 
-            // It also removes any potential leading number/dot/space (e.g., "1. " or "2 ") from the title.
-            const articleRegex = /##\s*(\d*\.?\s*)(.*?)\s*\n\s*((?:(?!\n##|\n\n-|\n\n\[).)*)/gs;
+            // Updated Regex: 
+            // 1. Looks for '##' followed by optional whitespace.
+            // 2. Captures an optional number, dot, or space prefix: `(\d+\.?\s*)`
+            // 3. Captures the actual title: `(.*?)\s*`
+            // 4. Captures the body content: `((?:(?!\n##|\n\n-|\n\n\[).)*)`
+            const articleRegex = /##\s*(\d+\.?\s*)?(.*?)\s*\n\s*((?:(?!\n##|\n\n-|\n\n\[).)*)/gs;
             let match;
             let currentId = liveNewsData.length + 1;
 
             while ((match = articleRegex.exec(markdownText)) !== null) {
-                // match[1] captures the optional number/dot/space (e.g., "1. ")
-                // match[2] captures the actual title
+                // match[2] captures the actual title, ensuring we skip match[1] (the number/dot/space)
                 const title = match[2].trim(); 
                 let fullText = match[3].trim(); // match[3] captures the body content
 
@@ -301,7 +302,8 @@
 
             if (article.summary) {
                 // Action: Show Summary (already generated)
-                contentArea.innerHTML = `<div class="font-bold mb-1 text-flash-purple">Flash Summary (60 Words Max):</div><p class="font-medium">${article.summary}</p>`;
+                // Updated Summary Title
+                contentArea.innerHTML = `<div class="font-bold mb-1 text-flash-purple">Flash Summary:</div><p class="font-medium">${article.summary}</p>`;
                 textSpan.textContent = 'Hide Summary';
                 button.setAttribute('data-state', 'summary');
                 button.classList.remove('bg-flash-purple');
@@ -326,7 +328,8 @@
                 if (result && result.text) {
                     // Update the article data and UI
                     article.summary = result.text.trim(); // Save the summary
-                    contentArea.innerHTML = `<div class="font-bold mb-1 text-flash-purple">Flash Summary (60 Words Max):</div><p class="font-medium">${article.summary}</p>`;
+                    // Updated Summary Title
+                    contentArea.innerHTML = `<div class="font-bold mb-1 text-flash-purple">Flash Summary:</div><p class="font-medium">${article.summary}</p>`;
                     textSpan.textContent = 'Hide Summary';
                     button.setAttribute('data-state', 'summary');
                     button.classList.remove('bg-flash-purple');
@@ -354,7 +357,8 @@
             const documentHeight = document.body.offsetHeight;
             
             // Trigger fetch when user is near the bottom
-            if (scrollPosition >= documentHeight - 500 && !isFetching && liveNewsData.length < MAX_ARTICLES) {
+            // We reduced the trigger threshold to 200px to make scrolling feel smoother
+            if (scrollPosition >= documentHeight - 200 && !isFetching && liveNewsData.length < MAX_ARTICLES) {
                 fetchNews();
             }
         }
