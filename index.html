@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlashFinance Real-Time News (Netlify Secure)</title>
+    <!-- Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Set up configuration for Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        'flash-purple': '#4c1d95',
+                        'flash-blue': '#4f46e5',
+                        'flash-green': '#10b981',
+                        'flash-red': '#ef4444',
+                        'flash-yellow': '#f59e0b',
+                        'bg-gray': '#f8fafc',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        .flash-card {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .spinner {
+            border-top-color: #4f46e5;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .tag-Earnings { background-color: #d1fae5; color: #059669; }
+        .tag-Macro { background-color: #bfdbfe; color: #1d4ed8; }
+        .tag-Tech { background-color: #fce7f3; color: #db2777; }
+        .tag-Policy { background-color: #fef3c7; color: #d97706; }
+        .tag-M\&A { background-color: #e0f2f1; color: #0d9488; }
+        .tag-Market { background-color: #fee2e2; color: #dc2626; }
+        .tag-Default { background-color: #e5e7eb; color: #4b5563; }
+        .date-header {
+            position: relative;
+            text-align: center;
+            margin: 2rem 0 1rem 0;
+            color: #6b7280;
+            font-weight: 600;
+        }
+        .date-header::before, .date-header::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: 40%;
+            height: 1px;
+            background: #e5e7eb;
+        }
+        .date-header::before { left: 0; }
+        .date-header::after { right: 0; }
+        .date-text {
+            background-color: #f8fafc;
+            padding: 0 1rem;
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+    <div class="max-w-xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold tracking-tight text-flash-purple">
+                Flash<span class="text-flash-blue">Finance</span> (SECURE)
+            </h1>
+            <p class="text-gray-500 mt-2 text-base">
+                The essential facts in 60 words or less, powered by a secure Netlify Function.
+            </p>
+        </header>
+
+        <div id="news-container" class="space-y-6">
+            <p id="initial-message" class="text-center text-gray-500 italic p-4">
+                Fetching secure financial stories...
+            </p>
+        </div>
+
+        <div id="bottom-loader" class="text-center p-8 hidden">
+            <div class="spinner border-4 border-gray-200 border-t-4 w-8 h-8 mx-auto"></div>
+            <p class="mt-4 text-gray-500">Loading more stories...</p>
+        </div>
+        
+    </div>
+
+    <!-- Application Logic (Now calling Netlify Proxy) -->
+    <script type="module">
+        // --- Netlify Function Endpoints ---
+        // We call the file name within the netlify/ folder (get-news.js)
+        const NEWS_PROXY_ENDPOINT = '/.netlify/functions/get-news'; 
+        const SUMMARY_PROXY_ENDPOINT = '/.netlify/functions/get-news'; // Reusing the same function
+        
+        // UI Elements
+        const newsContainer = document.getElementById('news-container');
+        const initialMessage = document.getElementById('initial-message');
+        const bottomLoader = document.getElementById('bottom-loader');
+
+        let liveNewsData = []; 
+        let isFetching = false; 
+
+        // --- Date Utilities for Chronological Feed ---
+        function getTodayDateString() {
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+        
+        function getPreviousDay(dateString) {
+            const date = new Date(dateString + 'T00:00:00'); 
+            date.setDate(date.getDate() - 1);
+            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        }
+
+        let currentQueryDate = getTodayDateString(); 
+
+        // --- Core Application Start ---
+        fetchNews();
+        
+        /**
+         * Generic function to call the Netlify Proxy. The proxy handles the secret key.
+         * The client-side (browser) code never sees the API key.
+         */
+        async function callProxyApi(endpoint, payload, isJson = false) {
+            const maxRetries = 3;
+            
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+                try {
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const result = await response.json();
+
+                    if (response.status !== 200) {
+                        console.error(`Proxy Error (Status ${response.status}):`, result.error || "Unknown server error.");
+                        throw new Error(`Proxy call failed with status ${response.status}`);
+                    }
+                    
+                    // The Netlify function passes the raw Gemini response
+                    const geminiResult = result.candidates?.[0];
+                    if (!geminiResult) return { error: true, rawText: "API response candidates missing." };
+                    
+                    const text = geminiResult.content?.parts?.[0]?.text || '';
+                    
+                    if (isJson) {
+                        let cleanedText = text;
+                        try {
+                            cleanedText = cleanedText.replace(/^```json\s*|```\s*$/g, '').trim();
+                            
+                            const firstBracket = cleanedText.indexOf('[');
+                            const lastBracket = cleanedText.lastIndexOf(']');
+
+                            if (firstBracket !== -1 && lastBracket > firstBracket) {
+                                cleanedText = cleanedText.substring(firstBracket, lastBracket + 1);
+                                return JSON.parse(cleanedText);
+                            } else {
+                                console.error("JSON Structure not found: Missing array brackets [].");
+                                return { error: true, rawText: cleanedText };
+                            }
+
+                        } catch (e) {
+                            console.error("JSON Parsing failed in try/catch block:", e.message);
+                            return { error: true, rawText: cleanedText };
+                        }
+                    }
+                    
+                    return { text };
+
+                } catch (error) {
+                    console.error(`Attempt ${attempt + 1} failed:`, error.message);
+                    if (attempt < maxRetries - 1) {
+                        const waitTime = Math.pow(2, attempt) * 1000;
+                        await new Promise(resolve => setTimeout(resolve, waitTime));
+                    }
+                }
+            }
+            return null; // Irrecoverable failure after all retries
+        }
+
+        /**
+         * Fetches the top finance news stories for the currentQueryDate.
+         */
+        async function fetchNews() {
+            if (isFetching) return;
+
+            isFetching = true;
+            
+            const isInitialLoad = liveNewsData.length === 0;
+
+            initialMessage.classList.add('hidden');
+            bottomLoader.classList.remove('hidden');
+
+            if (isInitialLoad) {
+                newsContainer.innerHTML = `<div class="text-center p-8">
+                    <div class="spinner border-4 border-gray-200 border-t-4 w-8 h-8 mx-auto"></div>
+                    <p class="mt-4 text-flash-purple">Sourcing top stories for today via secure function...</p>
+                </div>`;
+                liveNewsData = []; 
+            }
+            
+            const queryDate = currentQueryDate;
+            
+            const displayDate = new Date(queryDate).toLocaleDateString('en-US', {
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+            });
+            
+            const todayStr = getTodayDateString();
+            const yesterdayStr = getPreviousDay(todayStr);
+
+            let headerText = displayDate;
+            if (queryDate === todayStr) {
+                headerText = "News from Today";
+            } else if (queryDate === yesterdayStr) {
+                headerText = "News from Yesterday";
+            }
+
+            // API Payload for Real-Time News (Text-based JSON Request)
+            const userPrompt = `Find 5 new and distinct important financial news stories that were published on the date ${queryDate}. Return the response STRICTLY as a JSON array of objects, following this structure: [{"title": "...", "category": "...", "source": "...", "snippet": "...", "full_story_content": "...", "url": "...", "date": "..."}]. For the category, use a single word (e.g., Earnings, Macro, Tech, Policy). The 'url' field MUST be the direct source link. The 'date' MUST be the publication date as a concise string (e.g., "Nov 25, 2024").`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userPrompt }] }],
+                tools: [{ "google_search": {} }],
+                systemInstruction: {
+                    parts: [{ text: "Act as a financial news researcher. Find 5 distinct stories and return the result as a STRICT, unadorned JSON array. DO NOT include any leading/trailing text, greetings, markdown fences (like ```json), or explanations outside the JSON array. Ensure every object includes a 'date' field with the article's publication time." }]
+                },
+            };
+
+            const result = await callProxyApi(NEWS_PROXY_ENDPOINT, payload, true);
+
+            isFetching = false;
+            bottomLoader.classList.add('hidden');
+
+            if (!result) {
+                 newsContainer.innerHTML = `<div class="bg-red-100 p-4 rounded-xl border-2 border-red-400">
+                    <p class="text-red-700 text-center font-bold">Proxy Function Failed</p>
+                    <p class="text-red-600 text-sm mt-2">The serverless function did not return a valid response. Please check Netlify function logs for errors.</p>
+                </div>`;
+                return;
+            }
+
+            if (Array.isArray(result) && result.length > 0) {
+                if (isInitialLoad) {
+                    newsContainer.innerHTML = ''; 
+                }
+                
+                const newStories = result.filter(story => story && story.url && story.title);
+
+                if (newStories.length > 0) {
+                    addDateHeader(headerText);
+
+                    const indexOffset = liveNewsData.length;
+                    liveNewsData.push(...newStories);
+                    renderNewsCards(newStories, indexOffset);
+                } else {
+                    if (isInitialLoad) {
+                         newsContainer.innerHTML = `<p class="text-gray-500 text-center p-8">No significant financial news found for today. Scrolling will try yesterday's news.</p>`;
+                    } else {
+                         addDateHeader(headerText + " - No significant news found");
+                    }
+                }
+                
+                currentQueryDate = getPreviousDay(queryDate);
+               
+            } else if (result && result.error) {
+                if (isInitialLoad) {
+                     newsContainer.innerHTML = `<div class="bg-red-100 p-4 rounded-xl border-2 border-red-400">
+                        <p class="text-red-700 text-center font-bold mb-3">Data Load Failed: Invalid JSON Format</p>
+                        <p class="text-red-600 text-sm mb-2">**Raw Output Received (Diagnostic)**:</p>
+                        <pre class="bg-red-50 p-3 text-xs overflow-auto text-left whitespace-pre-wrap rounded-lg max-h-64">${result.rawText || 'No parseable text was received.'}</pre>
+                    </div>`;
+                }
+            }
+        }
+        
+        /**
+         * Adds a date separator header to the news feed.
+         */
+        function addDateHeader(text) {
+             const header = document.createElement('div');
+             header.className = 'date-header';
+             header.innerHTML = `<span class="date-text">${text}</span>`;
+             newsContainer.appendChild(header);
+        }
+
+        /**
+         * Renders the news cards based on the structured data.
+         */
+        function renderNewsCards(data, indexOffset) {
+            
+            data.forEach((story, localIndex) => {
+                const globalIndex = indexOffset + localIndex;
+                const cleanCategory = story.category ? story.category.replace(/[^a-zA-Z0-9]/g, '').trim() : 'Default';
+                const categoryClass = `tag-${cleanCategory}`;
+                
+                // --- ROBUST URL VALIDATION AND CLEANING ---
+                let rawUrl = story.url ? story.url.trim() : null;
+                let hasValidUrl = false;
+                let cleanUrl = '#'; 
+
+                if (rawUrl && rawUrl.length > 5) { 
+                    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+                        cleanUrl = rawUrl;
+                    } else {
+                        cleanUrl = 'https://' + rawUrl;
+                    }
+                    
+                    if (cleanUrl.includes('.')) {
+                        hasValidUrl = true;
+                    } else {
+                        cleanUrl = '#';
+                    }
+                }
+                
+                const card = document.createElement('div');
+                card.id = `card-${globalIndex}`;
+                card.className = 'flash-card bg-white rounded-xl p-5 md:p-6 transition duration-300 hover:shadow-2xl';
+                
+                const sourceDisplay = hasValidUrl 
+                    ? `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-sm font-semibold text-flash-blue hover:text-flash-purple transition duration-150">
+                          ${story.source || 'Source Link'}
+                       </a>`
+                    : `<span class="text-sm font-semibold text-gray-500" title="External link not provided by the API source">${story.source || 'N/A'}</span>`;
+                
+                const dateDisplay = `<p class="text-xs text-gray-400 mt-1 mb-3">${story.date || 'Date N/A'}</p>`;
+
+
+                card.innerHTML = `
+                    <!-- Top Row: Category and Source -->
+                    <div class="flex justify-between items-center mb-3">
+                        <div class="flex items-center">
+                            <span class="w-2 h-2 rounded-full bg-flash-green mr-2"></span>
+                            <span class="text-xs font-bold px-2 py-1 rounded-full ${categoryClass}">${story.category || 'N/A'}</span>
+                        </div>
+                        <!-- Source link -->
+                        ${sourceDisplay}
+                    </div>
+
+                    <!-- Title -->
+                    <h2 class="text-xl font-extrabold text-gray-900 mb-0 leading-tight">${story.title || 'No Title Available'}</h2>
+
+                    <!-- Date -->
+                    ${dateDisplay}
+
+                    <!-- Snippet -->
+                    <p class="text-gray-600 mb-4">${story.snippet ? story.snippet + '...' : 'Details not available.'}</p>
+
+                    <!-- Summary Action -->
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <button data-index="${globalIndex}" class="summarize-btn w-full flex items-center justify-center bg-flash-purple hover:bg-flash-blue text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-sm disabled:bg-gray-400">
+                            <span class="summary-text">Generate 60-Word Summary</span>
+                            <div class="spinner summary-loader w-4 h-4 border-2 border-transparent rounded-full ml-2 hidden"></div>
+                        </button>
+                    </div>
+                    
+                    <!-- Content Area for Summary Toggle -->
+                    <div class="story-content mt-4 p-3 bg-bg-gray rounded-lg text-sm text-gray-700 hidden">
+                        <!-- Summary goes here -->
+                    </div>
+                `;
+                newsContainer.appendChild(card);
+            });
+
+            document.querySelectorAll('.summarize-btn').forEach(btn => {
+                btn.removeEventListener('click', handleSummarization); 
+                btn.addEventListener('click', handleSummarization);
+            });
+        }
+        
+        /**
+         * Handles the "Generate Summary" action.
+         */
+        async function handleSummarization(event) {
+            const btn = event.currentTarget;
+            const index = parseInt(btn.dataset.index);
+            const story = liveNewsData[index];
+            const card = document.getElementById(`card-${index}`);
+            const contentArea = card.querySelector('.story-content');
+            const summaryTextSpan = btn.querySelector('.summary-text');
+            const summaryLoader = btn.querySelector('.summary-loader');
+            
+            if (!contentArea.classList.contains('hidden') && contentArea.dataset.mode === 'summary') {
+                contentArea.classList.add('hidden');
+                summaryTextSpan.textContent = 'Generate 60-Word Summary';
+                return;
+            }
+
+            document.querySelectorAll('.summarize-btn').forEach(b => b.disabled = true);
+            summaryLoader.classList.remove('hidden');
+            summaryTextSpan.textContent = 'Generating...';
+            contentArea.classList.remove('hidden');
+            contentArea.innerHTML = `<p class="text-center">Generating summary...</p>`;
+            contentArea.dataset.mode = 'summary';
+
+            const payload = {
+                contents: [{ parts: [{ text: `Summarize this financial news story in a single, cohesive paragraph, strictly limiting the output to 60 words or less: ${story.full_story_content}` }] }],
+                systemInstruction: {
+                    parts: [{ text: "You are a concise financial editor. Summarize the content into a single paragraph, 60 words maximum. Do not use a title, bullets, or any citation placeholders." }]
+                },
+            };
+
+            const result = await callProxyApi(SUMMARY_PROXY_ENDPOINT, payload, false);
+
+            document.querySelectorAll('.summarize-btn').forEach(b => b.disabled = false);
+            summaryLoader.classList.add('hidden');
+            
+            if (result && result.text) {
+                summaryTextSpan.textContent = 'Hide Summary';
+                contentArea.innerHTML = `
+                    <div class="font-bold mb-1 text-flash-purple">Flash Summary:</div>
+                    ${result.text}
+                `;
+            } else {
+                summaryTextSpan.textContent = 'Retry Summary';
+                contentArea.innerHTML = `<p class="text-red-500">Failed to generate summary. (Check Console for Proxy Status)</p>`;
+            }
+        }
+
+        /**
+         * Handles scrolling to trigger infinite load.
+         */
+        function handleScroll() {
+            const scrollPosition = window.innerHeight + window.scrollY;
+            const documentHeight = document.body.offsetHeight;
+            
+            if (scrollPosition >= documentHeight - 200 && !isFetching && liveNewsData.length > 0) {
+                fetchNews();
+            }
+        }
+
+        // --- Event Listeners ---
+        window.addEventListener('scroll', handleScroll);
+
+    </script>
+</body>
+</html>

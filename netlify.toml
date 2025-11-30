@@ -1,0 +1,11 @@
+[build]
+
+Optional: You can specify a build command if you used one (e.g., "npm run build")
+
+command = ""
+
+[functions]
+
+MANDATORY: Tells Netlify to look inside the 'netlify' folder for serverless functions
+
+directory = "netlify"
