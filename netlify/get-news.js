@@ -1,4 +1,4 @@
-import fetch from 'node-fetch';
+const fetch = require('node-fetch'); // FIX: Use CommonJS require() syntax for compatibility
 
 const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025";
 // The API Key is securely pulled from Netlify's environment variables
