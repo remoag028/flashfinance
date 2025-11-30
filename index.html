@@ -49,9 +49,7 @@
             <h1 class="text-4xl font-extrabold text-gray-900">
                 <span class="text-flash-purple">Flash</span>Finance
             </h1>
-            <p class="text-gray-500 mt-2">
-                Real-time, secure financial news powered by Google Gemini and Netlify Functions.
-            </p>
+            <!-- Removed the sub-title as requested -->
         </header>
 
         <!-- Main News Feed -->
@@ -78,7 +76,6 @@
     </div>
 
     <script>
-        // FIX 1: Removed leading slash to prevent URL parsing errors in some execution environments.
         const NEWS_PROXY_ENDPOINT = '.netlify/functions/get-news';
         const MAX_ARTICLES = 15;
 
@@ -94,17 +91,13 @@
             card.className = 'flash-card bg-white p-5 rounded-xl border border-gray-100';
             card.innerHTML = `
                 <h2 class="text-xl font-bold text-gray-900 mb-2">${article.title}</h2>
-                <div class="flex justify-between items-center text-xs text-gray-500 mb-4 border-b pb-2">
-                    <span>Source: ${article.source}</span>
-                    <span>Published: ${article.date}</span> <!-- UPDATED: Display the formatted date -->
-                </div>
                 
                 <div id="content-${article.id}" class="article-content text-gray-700">
                     <!-- Placeholder/Initial Content -->
                     <p>${article.originalText.substring(0, 150)}...</p>
                 </div>
 
-                <div class="flex justify-between items-center mt-4">
+                <div class="flex justify-start items-center mt-4">
                     <button 
                         id="btn-toggle-${article.id}" 
                         class="summarize-btn px-4 py-2 bg-flash-purple text-white text-sm font-semibold rounded-lg hover:bg-opacity-90 transition duration-150 flex items-center" 
@@ -117,8 +110,6 @@
                         </svg>
                         <span id="text-toggle-${article.id}">Generate Flash Summary</span>
                     </button>
-                    <!-- Link now uses the specific link derived from grounding metadata -->
-                    <a href="${article.link}" target="_blank" rel="noopener noreferrer" class="text-flash-blue hover:underline text-sm font-medium">Read Full Article</a>
                 </div>
             `;
             document.getElementById('news-feed').appendChild(card);
@@ -133,23 +124,19 @@
         function displayMessage(message, type = 'info') {
             const box = document.getElementById('message-box');
             
-            // FIX 2: Correctly remove all conflicting classes and add classes individually
             box.classList.remove('hidden', 'bg-red-100', 'border-red-400', 'text-red-700', 'bg-blue-100', 'border-blue-400', 'text-blue-700', 'border', 'px-4', 'py-3', 'rounded-xl', 'mb-6', 'shadow-md'); 
 
-            // Add type-specific classes
             if (type === 'error') {
                 box.classList.add('bg-red-100', 'border-red-400', 'text-red-700');
             } else {
                 box.classList.add('bg-blue-100', 'border-blue-400', 'text-blue-700');
             }
 
-            // Add common classes
             box.classList.add('border', 'px-4', 'py-3', 'rounded-xl', 'mb-6', 'shadow-md');
             box.classList.remove('hidden');
 
             box.innerHTML = `<p>${message}</p>`;
             
-            // Hide after 5 seconds
             setTimeout(() => {
                 box.classList.add('hidden');
             }, 5000);
@@ -157,7 +144,6 @@
 
         /**
          * Helper function to call the Netlify proxy securely with exponential backoff.
-         * The function is generic and accepts a payload and endpoint.
          */
         async function callProxyApi(endpoint, payload, isJson = true, maxAttempts = 5) {
             let attempts = 0;
@@ -189,19 +175,7 @@
                     if (candidate && candidate.content?.parts?.[0]?.text) {
                         const text = candidate.content.parts[0].text;
                         
-                        let sources = [];
-                        const groundingMetadata = candidate.groundingMetadata;
-                        if (groundingMetadata && groundingMetadata.groundingAttributions) {
-                            sources = groundingMetadata.groundingAttributions
-                                .map(attribution => ({
-                                    uri: attribution.web?.uri,
-                                    title: attribution.web?.title,
-                                    date: attribution.web?.publish_date, // ADDED: Extract publish date
-                                }))
-                                .filter(source => source.uri && source.title);
-                        }
-                        
-                        return { text, sources };
+                        return { text }; 
                     } else {
                         throw new Error("API response content was empty or malformed.");
                     }
@@ -229,19 +203,17 @@
             const loader = document.getElementById('news-loader');
             if (loader) loader.classList.remove('hidden');
 
-            // CRITICAL FIX: Ensure 'type: "fetch"' is included in the payload
             const payload = {
                 type: 'fetch', // Tells get-news.js to run the news fetching logic
-                // No additional parameters needed for the first page
             };
 
             try {
-                // The proxy returns { text: markdown_string, sources: [] }
+                // The proxy returns { text: markdown_string }
                 const result = await callProxyApi(NEWS_PROXY_ENDPOINT, payload, true); 
 
                 if (result && result.text) {
                     // Use a simple markdown parser to extract articles
-                    const articles = parseMarkdownArticles(result.text, result.sources);
+                    const articles = parseMarkdownArticles(result.text);
 
                     // Append new articles to the global store
                     liveNewsData.push(...articles);
@@ -273,38 +245,30 @@
         /**
          * Parses the markdown string from the Gemini response into structured article objects.
          */
-        function parseMarkdownArticles(markdownText, sources) {
+        function parseMarkdownArticles(markdownText) {
             const articles = [];
-            // Regex to find H2 titles (##) and the following paragraph text
-            const articleRegex = /##\s*(.*?)\s*\n\s*((?:(?!\n##|\n\n-|\n\n\[).)*)/gs;
+            
+            // Updated Regex: Matches H2 titles (##) and the following text. 
+            // It also removes any potential leading number/dot/space (e.g., "1. " or "2 ") from the title.
+            const articleRegex = /##\s*(\d*\.?\s*)(.*?)\s*\n\s*((?:(?!\n##|\n\n-|\n\n\[).)*)/gs;
             let match;
             let currentId = liveNewsData.length + 1;
 
             while ((match = articleRegex.exec(markdownText)) !== null) {
-                const title = match[1].trim();
-                let fullText = match[2].trim();
+                // match[1] captures the optional number/dot/space (e.g., "1. ")
+                // match[2] captures the actual title
+                const title = match[2].trim(); 
+                let fullText = match[3].trim(); // match[3] captures the body content
 
                 // Clean up any remaining leading/trailing whitespace or empty lines
                 fullText = fullText.replace(/[\r\n]{2,}/g, '\n\n').trim();
 
                 if (title && fullText) {
-                    // UPDATED LOGIC: Cycle through the available sources to assign unique links/titles/dates
-                    const sourceIndex = sources.length > 0 ? articles.length % sources.length : 0;
-                    const sourceData = sources.length > 0 ? sources[sourceIndex] : { title: 'Gemini Search', uri: '#', date: null };
-
-                    // Format the date if available
-                    const formattedDate = sourceData.date 
-                        ? new Date(sourceData.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) 
-                        : 'Date Unavailable';
-
                     articles.push({
                         id: currentId++,
                         title: title,
                         originalText: fullText,
-                        source: sourceData.title, // Use the actual source title
-                        link: sourceData.uri,      // Use the actual source URI
-                        date: formattedDate,       // Include the formatted date
-                        summary: null, // Will be populated by the summary click
+                        summary: null, 
                     });
                 }
             }
@@ -357,7 +321,7 @@
 
             try {
                 // Call the proxy for summarization
-                const result = await callProxyApi(NEWS_PROXY_ENDPOINT, summaryPayload, false); // False because we want a concise text response
+                const result = await callProxyApi(NEWS_PROXY_ENDPOINT, summaryPayload, false); 
 
                 if (result && result.text) {
                     // Update the article data and UI
