@@ -1,100 +1,85 @@
-/**
- * Netlify Serverless Function to securely proxy requests to the Google Gemini API.
- * This function hides the API key from the client-side code.
- *
- * It requires the GEMINI_API_KEY environment variable to be set in the Netlify dashboard.
- */
+import fetch from 'node-fetch';
 
-// Define the API URL and Model used for the Gemini call
 const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025";
-// --- SECURE: Key is read from Netlify's private environment variables ---
-const API_KEY = process.env.GEMINI_API_KEY; 
+// The API Key is securely pulled from Netlify's environment variables
+const API_KEY = process.env.GEMINI_API_KEY;
 
-// Main handler for the Netlify function
-exports.handler = async (event, context) => {
-    // 1. Input Validation and Security Check
-    if (event.httpMethod !== "POST") {
-        return {
-            statusCode: 405,
-            body: JSON.stringify({ error: "Method Not Allowed" })
-        };
-    }
-    
-    // Ensure the secret key is configured on the Netlify side
+/**
+ * Handles communication with the Gemini API for both real-time news fetching and summarization.
+ * This function acts as a secure proxy, preventing the API key from being exposed on the client-side.
+ */
+exports.handler = async (event) => {
     if (!API_KEY) {
-        console.error("GEMINI_API_KEY environment variable is not set.");
         return {
             statusCode: 500,
-            body: JSON.stringify({ error: "Server configuration error: API key missing." })
+            body: JSON.stringify({ error: "API Key is not configured on the server." }),
         };
     }
 
-    let payload;
-    try {
-        // The frontend sends the structured payload (including the prompt) in the request body
-        payload = JSON.parse(event.body);
-    } catch (e) {
+    // Netlify Functions parse the request body automatically for POST requests
+    const body = JSON.parse(event.body || '{}');
+    const apiType = body.type; // 'fetch' or 'summarize'
+
+    let systemPrompt = "";
+    let userQuery = "";
+    let tools = [];
+
+    if (apiType === 'fetch') {
+        // Configuration for real-time news fetching
+        userQuery = "What are the top 5 current finance and business news stories?";
+        systemPrompt = "Act as a concise news aggregator. Provide the title and full body of the top 5 finance stories. Format the output as clean markdown, separating each story clearly using titles and paragraphs.";
+        tools = [{ "google_search": {} }]; // Enable real-time search
+    } else if (apiType === 'summarize') {
+        // Configuration for summarization
+        userQuery = body.textToSummarize;
+        systemPrompt = "You are a highly efficient editor. Condense the provided financial news content into a single, cohesive, jargon-free paragraph. The summary must be 60 words or less. Do not use a title, introduction, or citation placeholders.";
+    } else {
         return {
             statusCode: 400,
-            body: JSON.stringify({ error: "Invalid JSON body provided." })
-        };
-    }
-    
-    // Minimal payload check
-    if (!payload || !payload.contents) {
-         return {
-            statusCode: 400,
-            body: JSON.stringify({ error: "Missing required 'contents' in payload." })
+            body: JSON.stringify({ error: "Invalid API type specified." }),
         };
     }
 
-    // Construct the actual Gemini API URL using the secret key
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${API_KEY}`;
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${API_KEY}`;
     
-    // 2. Exponential Backoff Implementation for robust network calls
-    const maxRetries = 3;
-    
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+    const payload = {
+        contents: [{ parts: [{ text: userQuery }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+    };
 
-            if (!response.ok) {
-                // If Gemini returns a non-200 status, log the details and retry if needed
-                const errorBody = await response.json();
-                console.error(`Gemini API Error (Attempt ${attempt + 1}):`, errorBody);
-                throw new Error(`Gemini API returned status ${response.status}`);
-            }
+    if (tools.length > 0) {
+        payload.tools = tools;
+    }
 
-            // Successfully received response
-            const geminiResponse = await response.json();
-            
-            // 3. Success Response: Forward the Gemini result back to the client
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.json();
+            console.error("Gemini API Error:", errorBody);
             return {
-                statusCode: 200,
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(geminiResponse)
+                statusCode: response.status,
+                body: JSON.stringify({ error: `External API call failed: ${response.status}`, details: errorBody }),
             };
-
-        } catch (error) {
-            console.warn(`Attempt ${attempt + 1} failed: ${error.message}`);
-            if (attempt < maxRetries - 1) {
-                // Wait time: 1s, 2s
-                const waitTime = Math.pow(2, attempt) * 1000;
-                await new Promise(resolve => setTimeout(resolve, waitTime));
-            } else {
-                // 4. Final Failure Response
-                return {
-                    statusCode: 502, // Bad Gateway or Service Unavailable
-                    body: JSON.stringify({ 
-                        error: "Failed to communicate with the Gemini API after multiple retries.",
-                        details: error.message
-                    })
-                };
-            }
         }
+
+        const result = await response.json();
+        
+        // Pass the full result (including text and grounding metadata) back to the client
+        return {
+            statusCode: 200,
+            body: JSON.stringify(result),
+        };
+
+    } catch (error) {
+        console.error("Internal Server Error:", error);
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: "Internal server error during API proxy." }),
+        };
     }
 };
