@@ -27,7 +27,7 @@ exports.handler = async (event) => {
     if (apiType === 'fetch') {
         // Configuration for real-time news fetching
         userQuery = "What are the top 5 current finance and business news stories?";
-        systemPrompt = "Act as a concise news aggregator. Provide the title and full body of the top 5 finance stories. Format the output as clean markdown, separating each story clearly using titles and paragraphs.";
+        systemPrompt = "Act as a concise news aggregator. Provide the title and full body of the top 5 finance stories. Format the output as clean markdown, separating each story clearly using only '## Title' followed by the body text. Do NOT use numbered lists (1., 2., 3., etc.) for titles or body content.";
         tools = [{ "google_search": {} }]; // Enable real-time search
     } else if (apiType === 'summarize') {
         // Configuration for summarization
