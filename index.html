@@ -96,7 +96,7 @@
                 <h2 class="text-xl font-bold text-gray-900 mb-2">${article.title}</h2>
                 <div class="flex justify-between items-center text-xs text-gray-500 mb-4 border-b pb-2">
                     <span>Source: ${article.source}</span>
-                    <span>Article ID: ${article.id}</span>
+                    <span>Published: ${article.date}</span> <!-- UPDATED: Display the formatted date -->
                 </div>
                 
                 <div id="content-${article.id}" class="article-content text-gray-700">
@@ -117,6 +117,7 @@
                         </svg>
                         <span id="text-toggle-${article.id}">Generate Flash Summary</span>
                     </button>
+                    <!-- Link now uses the specific link derived from grounding metadata -->
                     <a href="${article.link}" target="_blank" rel="noopener noreferrer" class="text-flash-blue hover:underline text-sm font-medium">Read Full Article</a>
                 </div>
             `;
@@ -195,6 +196,7 @@
                                 .map(attribution => ({
                                     uri: attribution.web?.uri,
                                     title: attribution.web?.title,
+                                    date: attribution.web?.publish_date, // ADDED: Extract publish date
                                 }))
                                 .filter(source => source.uri && source.title);
                         }
@@ -286,15 +288,22 @@
                 fullText = fullText.replace(/[\r\n]{2,}/g, '\n\n').trim();
 
                 if (title && fullText) {
-                    // Use the first source URI as the mock link for simplicity
-                    const link = sources.length > 0 ? sources[0].uri : '#';
+                    // UPDATED LOGIC: Cycle through the available sources to assign unique links/titles/dates
+                    const sourceIndex = sources.length > 0 ? articles.length % sources.length : 0;
+                    const sourceData = sources.length > 0 ? sources[sourceIndex] : { title: 'Gemini Search', uri: '#', date: null };
+
+                    // Format the date if available
+                    const formattedDate = sourceData.date 
+                        ? new Date(sourceData.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) 
+                        : 'Date Unavailable';
 
                     articles.push({
                         id: currentId++,
                         title: title,
                         originalText: fullText,
-                        source: sources.length > 0 ? sources[0].title : 'Gemini Search',
-                        link: link,
+                        source: sourceData.title, // Use the actual source title
+                        link: sourceData.uri,      // Use the actual source URI
+                        date: formattedDate,       // Include the formatted date
                         summary: null, // Will be populated by the summary click
                     });
                 }
