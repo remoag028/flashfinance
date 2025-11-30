@@ -1,0 +1,12 @@
+{
+  "name": "flashfinance-root",
+  "version": "1.0.0",
+  "description": "Root dependencies for Netlify site and functions.",
+  "main": "index.html",
+  "dependencies": {
+    "node-fetch": "^2.6.7"
+  },
+  "scripts": {
+    "postinstall": "echo 'Dependencies installed successfully.'"
+  }
+}
